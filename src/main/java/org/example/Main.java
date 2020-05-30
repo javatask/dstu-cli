@@ -1,4 +1,6 @@
+package org.example;
 
+import org.apache.commons.cli.*;
 import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1Primitive;
@@ -50,20 +52,29 @@ public class Main {
         writeByteArrayToFile(new File("priv.dat"), keyPair.getPrivate().getEncoded());
         writeByteArrayToFile(new File("pub.dat"), keyPair.getPublic().getEncoded());
 
+        System.out.println("Key pair was generated");
+
         return keyPair;
     }
 
-    public static KeyPair loadKeys() throws InvalidAlgorithmParameterException, NoSuchProviderException, NoSuchAlgorithmException, IOException {
-        byte[] privateKeyRaw = readFileToByteArray(new File("priv.dat"));
-        byte[] publicKeyRaw = readFileToByteArray(new File("pub.dat"));
+    public static PrivateKey loadPrivateKey(String fileName) throws InvalidAlgorithmParameterException, NoSuchProviderException, NoSuchAlgorithmException, IOException {
+        byte[] privateKeyRaw = readFileToByteArray(new File(fileName));
 
         JcaPEMKeyConverter converter = new JcaPEMKeyConverter();
         PrivateKey privateKey = converter.getPrivateKey(PrivateKeyInfo.getInstance(ASN1Primitive.fromByteArray(privateKeyRaw)));
+
+
+        return privateKey;
+    }
+
+    public static PublicKey loadPublicKey(String fileName) throws InvalidAlgorithmParameterException, NoSuchProviderException, NoSuchAlgorithmException, IOException {
+        byte[] publicKeyRaw = readFileToByteArray(new File(fileName));
+
+        JcaPEMKeyConverter converter = new JcaPEMKeyConverter();
         PublicKey publicKey = converter.getPublicKey(SubjectPublicKeyInfo.getInstance(ASN1Primitive.fromByteArray(publicKeyRaw)));
 
-        KeyPair kp = new KeyPair(publicKey, privateKey);
 
-        return kp;
+        return publicKey;
     }
 
     public static byte[] sign(PrivateKey privKey, byte[] data) throws NoSuchProviderException, NoSuchAlgorithmException, InvalidKeyException, SignatureException, IOException {
@@ -90,15 +101,48 @@ public class Main {
         System.out.printf("Signature is %s", verify);
     }
 
-    public static void main(String[] args) throws NoSuchProviderException, NoSuchAlgorithmException, SignatureException, InvalidAlgorithmParameterException, InvalidKeyException, IOException {
+    public static void main(String[] args) throws NoSuchProviderException, NoSuchAlgorithmException, SignatureException, InvalidAlgorithmParameterException, InvalidKeyException, IOException, ParseException {
         Security.addProvider(new BouncyCastleProvider());
-        // KeyPair kp = generateKeyPair();
-        KeyPair kp = loadKeys();
 
-        // upload
-        byte[] data = readFileToByteArray(new File("test.txt"));
+        // create Options object
+        Options options = new Options();
+        // add t option
+        options.addOption("g", false, "generate private and public keys");
 
-        byte[] signature = sign(kp.getPrivate(), data);
-        verify(kp.getPublic(), data, signature);
+        options.addOption("f", true, "file to sign");
+        options.addOption("s", false, "sign the file");
+        options.addOption("v", true, "verify signature");
+
+        options.addOption("pub", true, "public key to use");
+        options.addOption("pri", true, "private key to use");
+
+        CommandLineParser parser = new GnuParser();
+        CommandLine cmd = parser.parse(options, args);
+
+        if (cmd.hasOption("g")) {
+            KeyPair kp = generateKeyPair();
+            return;
+        }
+
+        String fileToSign = cmd.getOptionValue("f");
+
+        if (cmd.hasOption("f") && cmd.hasOption("s") && cmd.hasOption("pri")) {
+            System.out.println("Signing file");
+            byte[] data = readFileToByteArray(new File(fileToSign));
+
+            PrivateKey privateKey = loadPrivateKey(cmd.getOptionValue("pri"));
+            byte[] signature = sign(privateKey, data);
+        }
+
+        if (cmd.hasOption("f") && cmd.hasOption("v") && cmd.hasOption("pub")) {
+            System.out.println("Signing file");
+            byte[] data = readFileToByteArray(new File(fileToSign));
+            byte[] signature = readFileToByteArray(new File(cmd.getOptionValue("v")));
+
+            PublicKey publicKey = loadPublicKey(cmd.getOptionValue("pub"));
+
+            verify(publicKey, data, signature);
+        }
+
     }
 }
