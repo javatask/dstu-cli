@@ -23,13 +23,19 @@
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcprov-jdk15on</artifactId>
-            <version>1.64</version>
+            <version>1.69.4</version>
         </dependency>
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcpkix-jdk15on</artifactId>
-            <version>1.64</version>
+            <version>1.69.4</version>
         </dependency>
+        <dependency>
+            <groupId>bc-java</groupId>
+            <artifactId>core</artifactId>
+            <version>1.69.4</version>
+        </dependency>
+
         <dependency>
             <groupId>commons-io</groupId>
             <artifactId>commons-io</artifactId>

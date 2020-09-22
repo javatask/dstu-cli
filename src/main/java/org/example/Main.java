@@ -1,14 +1,22 @@
 package org.example;
 
 import org.apache.commons.cli.*;
-import org.bouncycastle.asn1.ASN1InputStream;
-import org.bouncycastle.asn1.ASN1Object;
-import org.bouncycastle.asn1.ASN1Primitive;
+import org.bouncycastle.asn1.*;
+import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
 import org.bouncycastle.asn1.sec.ECPrivateKey;
 import org.bouncycastle.asn1.ua.DSTU4145NamedCurves;
 import org.bouncycastle.asn1.ua.UAObjectIdentifiers;
+import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.asn1.x509.BasicConstraints;
+import org.bouncycastle.asn1.x509.Certificate;
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils;
+import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
+import org.bouncycastle.crypto.engines.DESedeEngine;
+import org.bouncycastle.crypto.engines.RC2Engine;
+import org.bouncycastle.crypto.modes.CBCBlockCipher;
 import org.bouncycastle.crypto.params.ECDomainParameters;
 import org.bouncycastle.jcajce.provider.asymmetric.dstu.BCDSTU4145PrivateKey;
 import org.bouncycastle.jcajce.provider.asymmetric.dstu.BCDSTU4145PublicKey;
@@ -17,21 +25,102 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.jce.provider.JCEElGamalPrivateKey;
 import org.bouncycastle.math.ec.ECCurve;
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
-import org.bouncycastle.pkcs.PKCS8EncryptedPrivateKeyInfo;
-import sun.security.pkcs.PKCS8Key;
+import org.bouncycastle.operator.ContentSigner;
+import org.bouncycastle.operator.OperatorCreationException;
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+import org.bouncycastle.pkcs.*;
+import org.bouncycastle.pkcs.bc.BcPKCS12MacCalculatorBuilder;
+import org.bouncycastle.pkcs.bc.BcPKCS12PBEOutputEncryptorBuilder;
+import org.bouncycastle.pkcs.jcajce.JcaPKCS12SafeBagBuilder;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.security.*;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.Calendar;
+import java.util.Date;
 
 import static org.apache.commons.io.FileUtils.*;
 
 public class Main {
 
-    public static KeyPair generateKeyPair() throws InvalidAlgorithmParameterException, NoSuchProviderException, NoSuchAlgorithmException, IOException {
+    public static void generateP12(PrivateKey privKey1, PublicKey pubKey1) throws CertificateException, OperatorCreationException, IOException, NoSuchAlgorithmException, PKCSException, NoSuchProviderException {
+        char[] passwd = "123456".toCharArray();
+        X509Certificate[] chain = new X509Certificate[1];
+        chain[0] =  getCertificate(privKey1, pubKey1);
+        PublicKey         pubKey = pubKey1;
+        PrivateKey        privKey = privKey1;
+        JcaX509ExtensionUtils extUtils = new JcaX509ExtensionUtils();
+
+        PKCS12SafeBagBuilder eeCertBagBuilder = new JcaPKCS12SafeBagBuilder(chain[0]);
+
+        eeCertBagBuilder.addBagAttribute(PKCSObjectIdentifiers.pkcs_9_at_friendlyName, new DERBMPString("DSTU4145 Test"));
+        eeCertBagBuilder.addBagAttribute(PKCSObjectIdentifiers.pkcs_9_at_localKeyId, extUtils.createSubjectKeyIdentifier(pubKey));
+
+        PKCS12SafeBagBuilder keyBagBuilder = new JcaPKCS12SafeBagBuilder(privKey, new BcPKCS12PBEOutputEncryptorBuilder(PKCSObjectIdentifiers.pbeWithSHAAnd3_KeyTripleDES_CBC, new CBCBlockCipher(new DESedeEngine())).build(passwd));
+
+        keyBagBuilder.addBagAttribute(PKCSObjectIdentifiers.pkcs_9_at_friendlyName, new DERBMPString("DSTU4145 Test"));
+        keyBagBuilder.addBagAttribute(PKCSObjectIdentifiers.pkcs_9_at_localKeyId, extUtils.createSubjectKeyIdentifier(pubKey));
+
+        //
+        // construct the actual key store
+        //
+        PKCS12PfxPduBuilder pfxPduBuilder = new PKCS12PfxPduBuilder();
+
+        PKCS12SafeBag[] certs = new PKCS12SafeBag[1];
+
+        certs[0] = eeCertBagBuilder.build();
+
+        pfxPduBuilder.addData(eeCertBagBuilder.build());
+
+        pfxPduBuilder.addData(keyBagBuilder.build());
+
+        PKCS12PfxPdu pfx = pfxPduBuilder.build(new BcPKCS12MacCalculatorBuilder(), passwd);
+
+
+        writeByteArrayToFile(new File("dstu.p12"), pfx.getEncoded());
+    }
+
+    public static X509Certificate getCertificate(PrivateKey privKey, PublicKey pubKey) throws OperatorCreationException, IOException, CertificateException, NoSuchProviderException, NoSuchAlgorithmException {
+        Provider bcProvider = new BouncyCastleProvider();
+        Security.addProvider(bcProvider);
+
+        long now = System.currentTimeMillis();
+        Date startDate = new Date(now);
+
+        X500Name dnName = new X500Name("CN=Test Dstu4145");
+        BigInteger certSerialNumber = new BigInteger(Long.toString(now)); // <-- Using the current timestamp as the certificate serial number
+
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(startDate);
+        calendar.add(Calendar.YEAR, 1); // <-- 1 Yr validity1
+
+        Date endDate = calendar.getTime();
+
+        String signatureAlgorithm = "GOST34311withDSTU4145"; // <-- Use appropriate signature algorithm based on your keyPair algorithm.
+        Signature.getInstance("GOST34311withDSTU4145", "BC");
+
+        ContentSigner contentSigner = new JcaContentSignerBuilder(signatureAlgorithm).build(privKey);
+
+        JcaX509v3CertificateBuilder certBuilder = new JcaX509v3CertificateBuilder(dnName, certSerialNumber, startDate, endDate, dnName, pubKey);
+
+        // Extensions --------------------------
+
+        // Basic Constraints
+        BasicConstraints basicConstraints = new BasicConstraints(false); // <-- true for CA, false for EndEntity
+
+        certBuilder.addExtension(new ASN1ObjectIdentifier("2.5.29.19"), true, basicConstraints); // Basic Constraints is usually marked as critical.
+
+        // -------------------------------------
+
+        return new JcaX509CertificateConverter().setProvider(bcProvider).getCertificate(certBuilder.build(contentSigner));
+    }
+
+    public static KeyPair generateKeyPair() throws InvalidAlgorithmParameterException, NoSuchProviderException, NoSuchAlgorithmException, IOException, KeyStoreException, CertificateException, OperatorCreationException, PKCSException {
         // keys
         ECDomainParameters ecDP = DSTU4145NamedCurves.getByOID(UAObjectIdentifiers.dstu4145le.branch("2.2"));
         ECCurve curve = ecDP.getCurve();
@@ -51,6 +140,8 @@ public class Main {
 
         writeByteArrayToFile(new File("priv.dat"), keyPair.getPrivate().getEncoded());
         writeByteArrayToFile(new File("pub.dat"), keyPair.getPublic().getEncoded());
+
+        generateP12(keyPair.getPrivate(), keyPair.getPublic());
 
         System.out.println("Key pair was generated");
 
@@ -101,7 +192,7 @@ public class Main {
         System.out.printf("Signature is %s", verify);
     }
 
-    public static void main(String[] args) throws NoSuchProviderException, NoSuchAlgorithmException, SignatureException, InvalidAlgorithmParameterException, InvalidKeyException, IOException, ParseException {
+    public static void main(String[] args) throws NoSuchProviderException, NoSuchAlgorithmException, SignatureException, InvalidAlgorithmParameterException, InvalidKeyException, IOException, ParseException, OperatorCreationException, CertificateException, PKCSException, KeyStoreException {
         Security.addProvider(new BouncyCastleProvider());
 
         // create Options object
@@ -121,6 +212,7 @@ public class Main {
 
         if (cmd.hasOption("g")) {
             KeyPair kp = generateKeyPair();
+//            MessageDigest.getInstance("GOST34311");
             return;
         }
 
