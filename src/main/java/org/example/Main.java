@@ -48,7 +48,7 @@ import static org.apache.commons.io.FileUtils.*;
 
 public class Main {
 
-    public static void generateP12(PrivateKey privKey1, PublicKey pubKey1) throws CertificateException, OperatorCreationException, IOException, NoSuchAlgorithmException, PKCSException, NoSuchProviderException {
+    public static void generateP12(PrivateKey privKey1, PublicKey pubKey1) throws CertificateException, OperatorCreationException, IOException, NoSuchAlgorithmException, PKCSException, NoSuchProviderException, SignatureException, InvalidKeyException {
         char[] passwd = "123456".toCharArray();
         X509Certificate[] chain = new X509Certificate[1];
         chain[0] =  getCertificate(privKey1, pubKey1);
@@ -82,10 +82,10 @@ public class Main {
         PKCS12PfxPdu pfx = pfxPduBuilder.build(new BcPKCS12MacCalculatorBuilder(), passwd);
 
 
-        writeByteArrayToFile(new File("dstu.p12"), pfx.getEncoded());
+        writeByteArrayToFile(new File("dstu2.p12"), pfx.getEncoded());
     }
 
-    public static X509Certificate getCertificate(PrivateKey privKey, PublicKey pubKey) throws OperatorCreationException, IOException, CertificateException, NoSuchProviderException, NoSuchAlgorithmException {
+    public static X509Certificate getCertificate(PrivateKey privKey, PublicKey pubKey) throws OperatorCreationException, IOException, CertificateException, NoSuchProviderException, NoSuchAlgorithmException, SignatureException, InvalidKeyException {
         Provider bcProvider = new BouncyCastleProvider();
         Security.addProvider(bcProvider);
 
@@ -101,8 +101,8 @@ public class Main {
 
         Date endDate = calendar.getTime();
 
-        String signatureAlgorithm = "GOST34311withDSTU4145"; // <-- Use appropriate signature algorithm based on your keyPair algorithm.
-        Signature.getInstance("GOST34311withDSTU4145", "BC");
+        String signatureAlgorithm = "GOST34311WITHDSTU4145"; // <-- Use appropriate signature algorithm based on your keyPair algorithm.
+        Signature.getInstance("GOST34311WITHDSTU4145", "BC");
 
         ContentSigner contentSigner = new JcaContentSignerBuilder(signatureAlgorithm).build(privKey);
 
@@ -117,10 +117,14 @@ public class Main {
 
         // -------------------------------------
 
-        return new JcaX509CertificateConverter().setProvider(bcProvider).getCertificate(certBuilder.build(contentSigner));
+        X509Certificate cert = new JcaX509CertificateConverter().setProvider(bcProvider).getCertificate(certBuilder.build(contentSigner));
+
+        cert.verify(pubKey, "BC");
+
+        return cert;
     }
 
-    public static KeyPair generateKeyPair() throws InvalidAlgorithmParameterException, NoSuchProviderException, NoSuchAlgorithmException, IOException, KeyStoreException, CertificateException, OperatorCreationException, PKCSException {
+    public static KeyPair generateKeyPair() throws InvalidAlgorithmParameterException, NoSuchProviderException, NoSuchAlgorithmException, IOException, KeyStoreException, CertificateException, OperatorCreationException, PKCSException, SignatureException, InvalidKeyException {
         // keys
         ECDomainParameters ecDP = DSTU4145NamedCurves.getByOID(UAObjectIdentifiers.dstu4145le.branch("2.2"));
         ECCurve curve = ecDP.getCurve();

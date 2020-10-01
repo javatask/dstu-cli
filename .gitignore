@@ -2,3 +2,5 @@
 /pub.dat
 /signature.dat
 /test.txt
+target/*
+.idea/*
