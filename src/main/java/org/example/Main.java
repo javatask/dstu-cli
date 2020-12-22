@@ -78,7 +78,7 @@ public class Main {
     }
 
     public static byte[] sign(PrivateKey privKey, byte[] data) throws NoSuchProviderException, NoSuchAlgorithmException, InvalidKeyException, SignatureException, IOException {
-        Signature signatureProvcider = Signature.getInstance("GOST3411withDSTU4145", BouncyCastleProvider.PROVIDER_NAME);
+        Signature signatureProvcider = Signature.getInstance("GOST34311withDSTU4145", BouncyCastleProvider.PROVIDER_NAME);
 
         // sign
         signatureProvcider.initSign(privKey);
@@ -91,7 +91,7 @@ public class Main {
     }
 
     public static void verify(PublicKey pubKey, byte[] data, byte[] signature) throws NoSuchProviderException, NoSuchAlgorithmException, InvalidKeyException, SignatureException {
-        Signature signatureProvcider = Signature.getInstance("GOST3411withDSTU4145", BouncyCastleProvider.PROVIDER_NAME);
+        Signature signatureProvcider = Signature.getInstance("GOST34311withDSTU4145", BouncyCastleProvider.PROVIDER_NAME);
 
         // verify
         signatureProvcider.initVerify(pubKey);
@@ -135,7 +135,7 @@ public class Main {
         }
 
         if (cmd.hasOption("f") && cmd.hasOption("v") && cmd.hasOption("pub")) {
-            System.out.println("Signing file");
+            System.out.println("File verification");
             byte[] data = readFileToByteArray(new File(fileToSign));
             byte[] signature = readFileToByteArray(new File(cmd.getOptionValue("v")));
 
